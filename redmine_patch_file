@@ -1,0 +1,96 @@
+#####################
+## Redmine patch file
+## ******************
+## This file patches the redmine files to add more call_hooks
+## Also it'll patch the groups controller to show groups for any logged in user. (whichever cap they have)
+#####################
+
+Index: app/controllers/groups_controller.rb
+===================================================================
+--- app/controllers/groups_controller.rb	(revision 17413)
++++ app/controllers/groups_controller.rb	(working copy)
+@@ -19,7 +19,7 @@
+   layout 'admin'
+   self.main_menu = false
+ 
+-  before_action :require_admin
++  before_action :require_admin, :except => [:show, :index]
+   before_action :find_group, :except => [:index, :new, :create]
+   accept_api_auth :index, :show, :create, :update, :destroy, :add_users, :remove_user
+ 
+Index: app/controllers/issues_controller.rb
+===================================================================
+--- app/controllers/issues_controller.rb	(revision 17413)
++++ app/controllers/issues_controller.rb	(working copy)
+@@ -52,7 +52,7 @@
+         }
+         format.api  {
+           @offset, @limit = api_offset_and_limit
+-          @query.column_names = %w(author)
++          @query.column_names = %w(author fixed_version)
+           @issue_count = @query.issue_count
+           @issues = @query.issues(:offset => @offset, :limit => @limit)
+           Issue.load_visible_relations(@issues) if include_in_api_response?('relations')
+@@ -392,6 +392,7 @@
+     @issues.each do |issue|
+       begin
+         issue.reload.destroy
++	call_hook(:controller_issues_destroy, { :params => params, :issue => issue})
+       rescue ::ActiveRecord::RecordNotFound # raised by #reload if issue no longer exists
+         # nothing to do, issue was already deleted (eg. by a parent)
+       end
+Index: app/controllers/projects_controller.rb
+===================================================================
+--- app/controllers/projects_controller.rb	(revision 17413)
++++ app/controllers/projects_controller.rb	(working copy)
+@@ -91,7 +91,8 @@
+       unless User.current.admin?
+         @project.add_default_member(User.current)
+       end
+-      respond_to do |format|
++      call_hook(:controller_projects_new_after_save, { :params => params, :project => @project})
++	respond_to do |format|
+         format.html {
+           flash[:notice] = l(:notice_successful_create)
+           if params[:continue]
+Index: app/controllers/users_controller.rb
+===================================================================
+--- app/controllers/users_controller.rb	(revision 17413)
++++ app/controllers/users_controller.rb	(working copy)
+@@ -19,8 +19,10 @@
+   layout 'admin'
+   self.main_menu = false
+ 
+-  before_action :require_admin, :except => :show
++  before_action :require_admin, :except => [:show,:index]
++  before_filter :require_admin_or_api_request, :only => :index
+   before_action ->{ find_user(false) }, :only => :show
++
+   before_action :find_user, :only => [:edit, :update, :destroy]
+   accept_api_auth :index, :show, :create, :update, :destroy
+ 
+Index: config/application.rb
+===================================================================
+--- config/application.rb	(revision 17413)
++++ config/application.rb	(working copy)
+@@ -70,7 +70,8 @@
+ 
+     # Configure log level here so that additional environment file
+     # can change it (environments/ENV.rb would take precedence over it)
+-    config.log_level = Rails.env.production? ? :info : :debug
++    config.log_level = :debug # Rails.env.production? ? :info : :debug
++config.logger = Logger.new('log/logfile.log', 2, 1000000)
+ 
+     config.session_store :cookie_store,
+       :key => '_redmine_session',
+Index: config/environments/production.rb
+===================================================================
+--- config/environments/production.rb	(revision 17413)
++++ config/environments/production.rb	(working copy)
+@@ -1,6 +1,6 @@
+ Rails.application.configure do
+   # Settings specified here will take precedence over those in config/application.rb
+-
++	config.log_level = :debug
+   # Code is not reloaded between requests.
+   config.cache_classes = true
