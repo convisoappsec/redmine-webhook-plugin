@@ -6,6 +6,9 @@ It's a fork for the original plugin
 https://github.com/Sharpie/redmine_updates_notifier
 
 - Fixes:
+
 -- **entity** now it's with your attributes. Before this was the **object**
+
 -- instance of ```Net::HTTP.new``` use ssl protocol when url scheme it's with **https**
+
 -- class ```Net::HTTP::Post.new``` no use **application/json**
